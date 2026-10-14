@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stockanalysis-db
+    environment:
+      POSTGRES_USER: stockuser
+      POSTGRES_PASSWORD: stockpass
+      POSTGRES_DB: stockanalysis
+    ports:
+      - "5432:5432"
+    volumes:
+      - stockdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockuser -d stockanalysis"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/OWNER/REPO:latest
+    container_name: stockanalysis-web
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__StockAnalysis: "Host=postgres;Port=5432;Database=stockanalysis;Username=stockuser;Password=stockpass"
+    ports:
+      - "5080:8080"
+
+volumes:
+  stockdata:

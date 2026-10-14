@@ -1,0 +1,8 @@
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+}

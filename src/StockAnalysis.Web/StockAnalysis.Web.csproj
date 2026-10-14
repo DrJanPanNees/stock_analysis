@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\StockAnalysis.Domain\StockAnalysis.Domain.csproj" />
+    <ProjectReference Include="..\StockAnalysis.Application\StockAnalysis.Application.csproj" />
+    <ProjectReference Include="..\StockAnalysis.Infrastructure\StockAnalysis.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ScottPlot" Version="5.0.21" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.7" />
+  </ItemGroup>
+
+</Project>

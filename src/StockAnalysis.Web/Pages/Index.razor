@@ -1,0 +1,226 @@
+@page "/"
+@inject StockAnalysisService AnalysisService
+
+<PageTitle>Aktieanalyse</PageTitle>
+
+<h1 class="mb-4">Aktieanalyse</h1>
+
+@if (_error is not null)
+{
+    <div class="alert alert-warning">@_error</div>
+}
+
+<h4>Watchlist <small class="text-muted fs-6">(fra PostgreSQL)</small>
+    <button type="button" class="btn btn-sm btn-success ms-2" @onclick="ToggleAddForm">
+        @(_showAddForm ? "Luk" : "+ Tilføj ticker")
+    </button>
+</h4>
+
+@if (_loading)
+{
+    <p><em>Henter watchlist…</em></p>
+}
+else
+{
+    <table class="table table-hover align-middle">
+        <thead><tr><th>Navn</th><th>Symbol</th><th style="width:160px"></th></tr></thead>
+        <tbody>
+        @foreach (var ticker in _tickers)
+        {
+            <tr class="@(_selectedTickerId == ticker.Id ? "table-active" : null)">
+                <td>@ticker.Name</td>
+                <td>@ticker.Symbol</td>
+                <td>
+                    <button class="btn btn-sm btn-primary" @onclick="() => AnalyzeAsync(ticker)" disabled="@_analyzing">
+                        Analysér
+                    </button>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@if (_showAddForm)
+{
+    <div class="card mb-3">
+        <div class="card-body">
+            <h6 class="mb-3">Tilføj ny ticker</h6>
+            @if (_addError is not null)
+            {
+                <div class="alert alert-warning py-2">@_addError</div>
+            }
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small mb-1">Symbol (Yahoo-ticker)</label>
+                    <input class="form-control" @bind="_newSymbol" placeholder="f.eks. GDX.L eller AAPL" />
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label small mb-1">Navn</label>
+                    <input class="form-control" @bind="_newName" placeholder="f.eks. VanEck Gold Miners UCITS ETF" />
+                </div>
+                <div class="col-md-3">
+                    <button type="button" class="btn btn-primary w-100" @onclick="AddTickerAsync" disabled="@_adding">
+                        @(_adding ? "Gemmer…" : "Gem")
+                    </button>
+                </div>
+            </div>
+            <div class="form-text mt-2">
+                Brug den ticker, Yahoo Finance kender (f.eks. <code>GDX.L</code>, <code>AAPL</code>). ISIN-numre virker ikke.
+            </div>
+        </div>
+    </div>
+}
+
+@if (_analyzing)
+{
+    <p><span class="spinner-border spinner-border-sm me-2"></span>Analyserer @_selectedTickerName…</p>
+}
+
+@if (_result is not null)
+{
+    <div class="card mb-4">
+        <div class="card-header">Detaljeret resumé – @_selectedTickerName</div>
+        <div class="card-body"><pre class="mb-0">@_result.Summary.ToText()</pre></div>
+    </div>
+
+    <img class="img-fluid border rounded mb-4" src="@_priceChart" alt="Pris og Bollinger Bands" />
+    <img class="img-fluid border rounded mb-4" src="@_rsiChart" alt="RSI" />
+    <img class="img-fluid border rounded mb-4" src="@_macdChart" alt="MACD" />
+
+    <h5>Signaler (seneste 15)</h5>
+    <table class="table table-sm">
+        <thead><tr><th>Dato</th><th>Type</th><th>Kilde</th><th>Close</th></tr></thead>
+        <tbody>
+        @foreach (var signal in _result.Signals.OrderByDescending(s => s.Date).Take(15))
+        {
+            <tr>
+                <td>@signal.Date.ToString("dd-MM-yyyy")</td>
+                <td class="@(signal.Kind == SignalKind.Buy ? "text-success fw-bold" : "text-danger fw-bold")">@signal.Kind</td>
+                <td>@signal.Source</td>
+                <td>@signal.Close.ToString("N2")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@if (_recentRuns.Count > 0)
+{
+    <h5 class="mt-4">Seneste gemte analyser</h5>
+    <table class="table table-sm">
+        <thead><tr><th>Ticker</th><th>Kørsel</th><th>RSI</th><th>MACD</th><th>Close</th></tr></thead>
+        <tbody>
+        @foreach (var run in _recentRuns)
+        {
+            <tr>
+                <td>@run.TickerName</td>
+                <td>@run.CreatedAtUtc.ToLocalTime().ToString("dd-MM-yyyy HH:mm")</td>
+                <td>@Format(run.Rsi)</td>
+                <td>@Format(run.Macd)</td>
+                <td>@run.LastClose.ToString("N2")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private const int Months = 12;
+
+    private IReadOnlyList<Ticker> _tickers = Array.Empty<Ticker>();
+    private IReadOnlyList<AnalysisRun> _recentRuns = Array.Empty<AnalysisRun>();
+    private TechnicalAnalysisResult? _result;
+
+    private Guid _selectedTickerId;
+    private string _selectedTickerName = "";
+
+    private bool _loading = true;
+    private bool _analyzing;
+    private string? _error;
+    private string? _priceChart, _rsiChart, _macdChart;
+
+    private bool _showAddForm;
+    private bool _adding;
+    private string _newSymbol = "";
+    private string _newName = "";
+    private string? _addError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _tickers = await AnalysisService.GetWatchlistAsync();
+            _recentRuns = await AnalysisService.GetRecentRunsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kunne ikke hente watchlist: {ex.Message} (kører PostgreSQL via docker compose?)";
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task AnalyzeAsync(Ticker ticker)
+    {
+        _analyzing = true;
+        _error = null;
+        _result = null;
+        _selectedTickerId = ticker.Id;
+        _selectedTickerName = ticker.Name;
+
+        try
+        {
+            _result = await AnalysisService.AnalyzeAsync(ticker.Id, Months);
+            if (_result is null)
+            {
+                _error = $"Ingen data for {ticker.Name} ({ticker.Symbol}). Tjek at symbolet findes på Yahoo Finance.";
+            }
+            else
+            {
+                _priceChart = ChartRenderer.RenderPriceChart(_result);
+                _rsiChart = ChartRenderer.RenderRsiChart(_result);
+                _macdChart = ChartRenderer.RenderMacdChart(_result);
+                _recentRuns = await AnalysisService.GetRecentRunsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Analyse fejlede: {ex.Message}";
+        }
+        finally { _analyzing = false; }
+    }
+
+    private void ToggleAddForm()
+    {
+        _showAddForm = !_showAddForm;
+        _addError = null;
+    }
+
+    private async Task AddTickerAsync()
+    {
+        _adding = true;
+        _addError = null;
+        try
+        {
+            var error = await AnalysisService.AddTickerAsync(_newSymbol, _newName);
+            if (error is not null)
+            {
+                _addError = error;
+            }
+            else
+            {
+                _newSymbol = "";
+                _newName = "";
+                _showAddForm = false;
+                _tickers = await AnalysisService.GetWatchlistAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _addError = $"Kunne ikke tilføje ticker: {ex.Message}";
+        }
+        finally { _adding = false; }
+    }
+
+    private static string Format(decimal? value) => value?.ToString("N2") ?? "-";
+}

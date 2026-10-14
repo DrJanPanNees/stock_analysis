@@ -1,0 +1,11 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+    </Found>
+    <NotFound>
+        <PageTitle>Ikke fundet</PageTitle>
+        <LayoutView Layout="typeof(MainLayout)">
+            <p role="alert">Siden blev ikke fundet.</p>
+        </LayoutView>
+    </NotFound>
+</Router>
